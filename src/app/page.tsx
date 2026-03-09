@@ -1,65 +1,168 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useState } from "react";
+import { io, Socket } from "socket.io-client";
+import { FtpFile } from "@/lib/ftp";
+import { SnapshotDiff } from "@/lib/diff";
 
 export default function Home() {
+  const [snapshot, setSnapshot] = useState<FtpFile[]>([]);
+  const [activities, setActivities] = useState<{ type: string; file: FtpFile; timestamp: string }[]>([]);
+  const [selectedFile, setSelectedFile] = useState<FtpFile | null>(null);
+  const [previewContent, setPreviewContent] = useState<string>("");
+  const [loadingPreview, setLoadingPreview] = useState(false);
+
+  useEffect(() => {
+    const socket: Socket = io();
+
+    socket.on("connect", () => {
+      console.log("Connected to WebSocket");
+    });
+
+    socket.on("fs:snapshot", (data: { snapshot: FtpFile[] }) => {
+      setSnapshot(data.snapshot);
+    });
+
+    socket.on("fs:diff", (diff: SnapshotDiff) => {
+      setSnapshot((prev) => {
+        const next = [...prev];
+        // Handle added
+        diff.added.forEach((file) => {
+          if (!next.find((f) => f.path === file.path)) {
+            next.push(file);
+          }
+        });
+        // Handle modified
+        diff.modified.forEach((file) => {
+          const index = next.findIndex((f) => f.path === file.path);
+          if (index !== -1) next[index] = file;
+        });
+        // Handle deleted
+        const deletedPaths = new Set(diff.deleted.map((f) => f.path));
+        return next.filter((f) => !deletedPaths.has(f.path));
+      });
+
+      // Update Activity Feed
+      const timestamp = new Date().toLocaleTimeString();
+      const newActivities = [
+        ...diff.added.map((f) => ({ type: "added", file: f, timestamp })),
+        ...diff.modified.map((f) => ({ type: "modified", file: f, timestamp })),
+        ...diff.deleted.map((f) => ({ type: "deleted", file: f, timestamp })),
+      ];
+      setActivities((prev) => [...newActivities, ...prev].slice(0, 50));
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
+  const handleFileClick = async (file: FtpFile) => {
+    if (file.type === "directory") return;
+    setSelectedFile(file);
+    setLoadingPreview(true);
+    setPreviewContent("");
+    try {
+      const res = await fetch(`/api/ftp/preview?path=${encodeURIComponent(file.path)}`);
+      if (res.ok) {
+        const text = await res.text();
+        setPreviewContent(text);
+      } else {
+        setPreviewContent("Error: Could not fetch file preview.");
+      }
+    } catch (err) {
+      setPreviewContent("Error: Connection failure.");
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  const toBase64 = (str: string) => btoa(str);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <main className="flex h-screen bg-slate-900 text-slate-100 overflow-hidden font-sans">
+      {/* File Tree Section */}
+      <section className="w-1/4 border-r border-slate-700 flex flex-col">
+        <header className="p-4 border-b border-slate-700 bg-slate-800">
+          <h2 className="text-xl font-bold text-blue-400">File System</h2>
+        </header>
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          {snapshot.sort((a, b) => a.path.localeCompare(b.path)).map((file) => (
+            <div
+              key={file.path}
+              data-test-id={`file-tree-item-${toBase64(file.path)}`}
+              onClick={() => handleFileClick(file)}
+              className={`p-2 rounded cursor-pointer transition-colors flex items-center gap-2 ${file.type === "directory" ? "text-amber-400 font-medium" : "text-slate-300 hover:bg-slate-700"
+                } ${selectedFile?.path === file.path ? "bg-slate-700 ring-1 ring-blue-500" : ""}`}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              <span>{file.type === "directory" ? "📁" : "📄"}</span>
+              <span className="truncate">{file.path}</span>
+            </div>
+          ))}
+          {snapshot.length === 0 && <p className="text-slate-500 text-sm italic">Scanning FTP...</p>}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      </section>
+
+      {/* Main Content (Preview + Activity) */}
+      <div className="flex-1 flex flex-col">
+        {/* Preview Panel */}
+        <section className="flex-1 flex flex-col p-6 bg-slate-900 overflow-hidden">
+          <header className="mb-4">
+            <h2 className="text-2xl font-semibold text-slate-100 flex items-center gap-2">
+              Preview Panel {selectedFile && <span className="text-sm font-normal text-slate-400">/ {selectedFile.path}</span>}
+            </h2>
+          </header>
+          <div
+            data-test-id="file-preview-panel"
+            className="flex-1 bg-slate-950 border border-slate-700 rounded-lg p-4 font-mono text-sm overflow-auto whitespace-pre-wrap relative shadow-inner"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            {loadingPreview ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-950/50">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-blue-500"></div>
+              </div>
+            ) : selectedFile ? (
+              previewContent || <span className="text-slate-500 italic">This file is empty or binary logic is not applied.</span>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-slate-600">
+                <span className="text-4xl mb-4">🔍</span>
+                <p>Select a file from the tree to preview its contents</p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Activity Feed */}
+        <section className="h-1/3 border-t border-slate-700 bg-slate-800 flex flex-col shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.3)]">
+          <header className="p-3 border-b border-slate-700 flex justify-between items-center">
+            <h3 className="font-bold text-emerald-400 uppercase tracking-wider text-xs">Live Activity Feed</h3>
+            <span className="text-[10px] text-slate-500 italic">Total updates: {activities.length}</span>
+          </header>
+          <div
+            data-test-id="activity-feed"
+            className="flex-1 overflow-y-auto p-3"
           >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+            {activities.map((act, i) => (
+              <div
+                key={i}
+                data-test-id={`activity-item-${act.type}-${toBase64(act.file.path)}`}
+                className="flex items-center justify-between py-2 border-b border-slate-700 last:border-0 hover:bg-slate-700/30 px-2 rounded -mx-2"
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${act.type === 'added' ? 'bg-emerald-500/10 text-emerald-500' :
+                      act.type === 'modified' ? 'bg-blue-500/10 text-blue-500' :
+                        'bg-rose-500/10 text-rose-500'
+                    }`}>
+                    {act.type}
+                  </span>
+                  <span className="text-xs text-slate-300 font-mono">{act.file.path}</span>
+                </div>
+                <span className="text-[10px] text-slate-500 tabular-nums">{act.timestamp}</span>
+              </div>
+            ))}
+            {activities.length === 0 && <p className="text-slate-600 text-xs italic text-center mt-4">Monitoring for changes...</p>}
+          </div>
+        </section>
+      </div>
+    </main>
   );
 }
