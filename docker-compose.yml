@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  # Next.js application service
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - FTP_HOST=ftp
+      - FTP_USER=${FTP_USER:-testuser}
+      - FTP_PASS=${FTP_PASS:-testpass}
+      - FTP_SECURE=false
+      - NEXT_PUBLIC_WS_URL=ws://localhost:3000
+      - POLLING_INTERVAL_MS=${POLLING_INTERVAL_MS:-5000}
+    depends_on:
+      ftp:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # FTP Server for testing
+  ftp:
+    image: fauria/vsftpd
+    ports:
+      - "20:20"
+      - "21:21"
+      - "21100-21110:21100-21110"
+    environment:
+      - FTP_USER=${FTP_USER:-testuser}
+      - FTP_PASS=${FTP_PASS:-testpass}
+      - PASV_ADDRESS=127.0.0.1
+      - PASV_MIN_PORT=21100
+      - PASV_MAX_PORT=21110
+    volumes:
+      - ./ftp-data:/home/vsftpd/${FTP_USER:-testuser}
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "21"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ftp-data:
