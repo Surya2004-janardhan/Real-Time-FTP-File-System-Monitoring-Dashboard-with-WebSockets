@@ -10,23 +10,24 @@ export interface FtpFile {
 
 export class FtpService {
   private client: ftp.Client;
-  private config: ftp.AccessOptions;
 
   constructor() {
     this.client = new ftp.Client();
     this.client.ftp.verbose = false;
-    this.config = {
+  }
+
+  async connect() {
+    if (!this.client.closed) return;
+
+    const config: ftp.AccessOptions = {
       host: process.env.FTP_HOST || "ftp",
       user: process.env.FTP_USER || "testuser",
       password: process.env.FTP_PASS || "testpass",
       secure: process.env.FTP_SECURE === "true",
     };
-  }
 
-  async connect() {
-    if (!this.client.closed) return;
     try {
-      await this.client.access(this.config);
+      await this.client.access(config);
     } catch (err) {
       console.error("FTP Connection Error:", err);
       throw err;
@@ -52,7 +53,7 @@ export class FtpService {
       for (const item of list) {
         const fullPath = currentPath === "/" ? `/${item.name}` : `${currentPath}/${item.name}`;
         const type = item.isDirectory ? "directory" : "file";
-        
+
         files.push({
           path: fullPath,
           name: item.name,
