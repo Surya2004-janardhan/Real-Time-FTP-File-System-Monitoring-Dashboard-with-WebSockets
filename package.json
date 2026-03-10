@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "ts-node --project tsconfig.json --transpile-only server.ts",
+    "dev": "npx tsx server.ts",
     "build": "next build",
     "start": "NODE_ENV=production ts-node --project tsconfig.json --transpile-only server.ts",
     "test": "jest"
   },
   "dependencies": {
     "basic-ftp": "^5.2.0",
+    "dotenv": "^17.3.1",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -18,7 +19,6 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/aws-lambda": "^8.10.161",
     "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
