@@ -86,21 +86,29 @@ export default function Home() {
         <header className="p-4 border-b border-slate-700 bg-slate-800">
           <h2 className="text-xl font-bold text-blue-400">File System</h2>
         </header>
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {snapshot.sort((a, b) => a.path.localeCompare(b.path)).map((file) => (
-            <div
-              key={file.path}
-              data-test-id={`file-tree-item-${toBase64(file.path)}`}
-              onClick={() => handleFileClick(file)}
-              className={`p-2 rounded cursor-pointer transition-colors flex items-center gap-2 ${file.type === "directory" ? "text-amber-400 font-medium" : "text-slate-300 hover:bg-slate-700"
+        <div className="flex-1 overflow-y-auto p-4 space-y-1">
+          {snapshot.sort((a, b) => a.path.localeCompare(b.path)).map((file) => {
+            const parts = file.path.split('/').filter(Boolean);
+            const depth = Math.max(0, parts.length - 1);
+            
+            return (
+              <div
+                key={file.path}
+                data-test-id={`file-tree-item-${toBase64(file.path)}`}
+                onClick={() => handleFileClick(file)}
+                style={{ paddingLeft: `${depth * 1.5}rem` }}
+                className={`p-2 rounded cursor-pointer transition-colors flex items-center gap-2 ${
+                  file.type === "directory" ? "text-amber-400 font-medium" : "text-slate-300 hover:bg-slate-700"
                 } ${selectedFile?.path === file.path ? "bg-slate-700 ring-1 ring-blue-500" : ""}`}
-            >
-              <span>{file.type === "directory" ? "📁" : "📄"}</span>
-              <span className="truncate">{file.path}</span>
-            </div>
-          ))}
+              >
+                <span>{file.type === "directory" ? "📁" : "📄"}</span>
+                <span className="truncate">{file.name}</span>
+              </div>
+            );
+          })}
           {snapshot.length === 0 && <p className="text-slate-500 text-sm italic">Scanning FTP...</p>}
         </div>
+
       </section>
 
       {/* Main Content (Preview + Activity) */}
