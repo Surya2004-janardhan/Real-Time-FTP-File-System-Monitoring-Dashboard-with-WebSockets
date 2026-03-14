@@ -36,16 +36,16 @@ services:
     environment:
       - FTP_USER=${FTP_USER:-testuser}
       - FTP_PASS=${FTP_PASS:-testpass}
-      - PASV_ADDRESS=127.0.0.1
       - PASV_MIN_PORT=21100
       - PASV_MAX_PORT=21110
     volumes:
       - ./ftp-data:/home/vsftpd/${FTP_USER:-testuser}
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "21"]
+      test: ["CMD-SHELL", "pgrep vsftpd || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 15s
 
 volumes:
   ftp-data:
