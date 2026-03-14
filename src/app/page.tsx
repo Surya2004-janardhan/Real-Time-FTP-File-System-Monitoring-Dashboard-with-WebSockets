@@ -57,6 +57,36 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!selectedFile) return;
+    const currentInSnapshot = snapshot.find((f) => f.path === selectedFile.path);
+    
+    // File was deleted
+    if (!currentInSnapshot) {
+      setPreviewContent("This file was deleted from the server.");
+      return;
+    }
+    
+    // File was modified
+    if (
+      currentInSnapshot.size !== selectedFile.size ||
+      currentInSnapshot.modifiedAt !== selectedFile.modifiedAt
+    ) {
+      setSelectedFile(currentInSnapshot);
+      
+      // Auto-refresh the preview
+      setLoadingPreview(true);
+      fetch(`/api/ftp/preview?path=${encodeURIComponent(currentInSnapshot.path)}`)
+        .then((res) => {
+          if (res.ok) return res.text();
+          throw new Error("Could not fetch file preview.");
+        })
+        .then((text) => setPreviewContent(text))
+        .catch(() => setPreviewContent("Error: Connection failure."))
+        .finally(() => setLoadingPreview(false));
+    }
+  }, [snapshot, selectedFile]);
+
   const handleFileClick = async (file: FtpFile) => {
     if (file.type === "directory") return;
     setSelectedFile(file);
